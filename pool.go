@@ -19,7 +19,7 @@ type DBPool interface {
 type DefaultDBPool struct {
 	dbname    string
 	dbconnstr string
-	dbconnNum string
+	dbconnNum int
 	freeConns []Connection
 	curConnID int
 	lock      sync.Mutex
@@ -31,18 +31,18 @@ func NewDefaultDBPool() DBPool {
 	return pool
 }
 
-func (this *DefaultDBPool) InitPool(database string, connstr string, initConnNum int) error {
-	this.lock.Lock()
-	defer this.lock.Unlock()
+func (pool *DefaultDBPool) InitPool(database string, connstr string, initConnNum int) error {
+	pool.lock.Lock()
+	defer pool.lock.Unlock()
 
-	this.dbname = database
-	this.dbconnstr = connstr
+	pool.dbname = database
+	pool.dbconnstr = connstr
 	if initConnNum <= 0 {
 		initConnNum = 5
 	}
-	this.dbconnNum = 0
+	pool.dbconnNum = 0
 	for i := 0; i < initConnNum; i++ {
-		_, err := this.createConnection()
+		_, err := pool.createConnection()
 		if err != nil {
 			return err
 		}
@@ -50,13 +50,14 @@ func (this *DefaultDBPool) InitPool(database string, connstr string, initConnNum
 	return nil
 }
 
-func (this *DefaultDBPool) getNextConnId() int {
-	this.curConnID++
-	return this.curConnID
+func (pool *DefaultDBPool) getNextConnID() int {
+	pool.curConnID++
+	return pool.curConnID
 }
 
-func (this *DefaultDBPool) createConnection() (Connection, error) {
-	db, err := sql.Open("mysql", this.dbconnstr)
+//createConnection...
+func (pool *DefaultDBPool) createConnection() (Connection, error) {
+	db, err := sql.Open("mysql", pool.dbconnstr)
 	if err != nil {
 		return nil, err
 	}
@@ -65,24 +66,24 @@ func (this *DefaultDBPool) createConnection() (Connection, error) {
 		return nil, err
 	}
 	conn := NewDBConnection(db)
-	conn.SetID(this.getNextConnID())
+	conn.SetID(pool.getNextConnID())
 	conn.Used(false)
-	this.dbconnNum++
-	this.freeConns = append(this.freeConns, conn)
+	pool.dbconnNum++
+	pool.freeConns = append(pool.freeConns, conn)
 	return conn, nil
 }
 
-func (this *DefaultDBPool) GetConnection() Connection {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	for _, tmp := range this.freeConns {
+func (pool *DefaultDBPool) GetConnection() Connection {
+	pool.lock.Lock()
+	defer pool.lock.Unlock()
+	for _, tmp := range pool.freeConns {
 		if false == tmp.IsUsed() {
 			tmp.Used(true)
 			return tmp
 		}
 	}
-	if this.dbconnNum < MAX_DB_CONNECTIONS {
-		conn, err := this.createConnection()
+	if pool.dbconnNum < MAX_DB_CONNECTIONS {
+		conn, err := pool.createConnection()
 		if err != nil {
 			return nil
 		}
@@ -92,13 +93,13 @@ func (this *DefaultDBPool) GetConnection() Connection {
 	return nil
 }
 
-func (this *DefaultDBPool) ReleaseConnection(conn Connection) bool {
+func (pool *DefaultDBPool) ReleaseConnection(conn Connection) bool {
 	if conn == nil {
 		return false
 	}
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	for _, tmp := range this.freeConns {
+	pool.lock.Lock()
+	defer pool.lock.Unlock()
+	for _, tmp := range pool.freeConns {
 		if tmp.GetID() == conn.GetID() {
 			tmp.Used(false)
 			return true
@@ -107,10 +108,10 @@ func (this *DefaultDBPool) ReleaseConnection(conn Connection) bool {
 	return false
 }
 
-func (this *DefaultDBPool) DestroyPool() {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	for _, tmp := range this.freeConns {
+func (pool *DefaultDBPool) DestroyPool() {
+	pool.lock.Lock()
+	defer pool.lock.Unlock()
+	for _, tmp := range pool.freeConns {
 		tmp.Close()
 	}
 }
